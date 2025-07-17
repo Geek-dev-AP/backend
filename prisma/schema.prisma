@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Field {
+  field_id    Int     @id @map("field_id")
+  field_text  String  @map("field_text")
+  questions   Question[]
+  options     Option[]
+
+  @@map("fields")
+}
+
+model Friend {
+  player_1_id  Int   @map("player_1_id")
+  player_2_id  Int   @map("player_2_id")
+  player1      User  @relation("FriendsAsPlayer1", fields: [player_1_id], references: [user_id])
+  player2      User  @relation("FriendsAsPlayer2", fields: [player_2_id], references: [user_id])
+
+  @@id([player_1_id, player_2_id])
+  @@map("friends")
+}
+
+model MatchDetail {
+  match_id          Int       @id @default(autoincrement()) @map("match_id") 
+  player_1_id       Int       @map("player_1_id")
+  player_2_id       Int?      @map("player_2_id")
+  started_at        DateTime  @db.Timestamptz @map("started_at")
+  ended_at          DateTime  @db.Timestamptz @map("ended_at")
+  winner            Int?      @map("winner")
+  player_1_correct  Int?      @map("player_1_correct")
+  player_2_correct  Int?      @map("player_2_correct")
+  match_status      Int       @map("match_status")
+  player1           User      @relation("MatchesAsPlayer1", fields: [player_1_id], references: [user_id])
+  player2           User?      @relation("MatchesAsPlayer2", fields: [player_2_id], references: [user_id])
+  status            MatchStatus @relation(fields: [match_status], references: [status_id])
+
+  @@map("match_detail")
+}
+
+model MatchStatus {
+  status_id    Int     @id @map("status_id")
+  status_text  String  @map("status_text")
+  matches      MatchDetail[]
+
+  @@map("match_status")
+}
+
+model Option {
+  option_id    Int        @id @map("option_id")
+  option_text  String     @map("option_text")
+  field_id     Int        @map("field")
+  field        Field      @relation(fields: [field_id], references: [field_id])
+  questions    Question[] @relation("QuestionAnswer")  // 追加したリレーション
+  
+  @@map("options")
+}
+
+model Question {
+  question_id    Int      @id @map("question_id")
+  question_text  String   @map("question_text")
+  field_id       Int      @map("field")
+  answer_id      Int      @map("answer")
+  explanation    String?  @map("explanation")
+  field          Field    @relation(fields: [field_id], references: [field_id])
+  answer         Option   @relation("QuestionAnswer", fields: [answer_id], references: [option_id])
+  
+  @@map("questions")
+}
+
+model User {
+  user_id           Int            @id @map("user_id")
+  user_name         String         @map("user_name")
+  account_name      String         @map("account_name")
+  password          String         @map("password")
+  email             String         @map("email")
+  registered_date   DateTime       @db.Timestamptz @map("registered_date")
+  latest_login      DateTime       @db.Timestamptz @map("latest_login")
+  total_win         Int            @default(0) @map("total_win")
+  total_lose        Int            @default(0) @map("total_lose")
+  total_draw        Int            @default(0) @map("total_draw")
+  total_answer      Int            @default(0) @map("total_answer")
+  correct_answer    Int            @default(0) @map("correct_answer")
+  incorrect_answer  Int            @default(0) @map("incorrect_answer")
+  friendsAsPlayer1  Friend[]       @relation("FriendsAsPlayer1")
+  friendsAsPlayer2  Friend[]       @relation("FriendsAsPlayer2")
+  matchesAsPlayer1  MatchDetail[]  @relation("MatchesAsPlayer1")
+  matchesAsPlayer2  MatchDetail[]  @relation("MatchesAsPlayer2")
+
+  @@map("users")
+}
