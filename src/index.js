@@ -17,6 +17,9 @@ const io = require("socket.io")(server, {
 app.use(cors());
 app.use(express.json());
 
+const matchStates = {};
+
+
 io.on("connection", (socket) => {
   console.log("接続:", socket.id);
 
@@ -142,7 +145,151 @@ io.on("connection", (socket) => {
   });
 });
 
+socket.on("sendQuestion", ({ match_id, question }) => {
+  // ルーム全体（自分＋相手）に1問だけ送信
+  io.to(`room_${match_id}`).emit("questionReceived", question);
+});
 
+
+// 回答結果
+socket.on("submitAnswer", async ({ match_id, user_id, isCorrect }) => {
+  try {
+    // 該当マッチの情報取得
+    const match = await prisma.matchDetail.findUnique({ where: { match_id } });
+    if (!match) return socket.emit("answerError", { error: "マッチが存在しません" });
+
+    const updateUserStat = {
+      total_answer: { increment: 1 },
+      correct_answer: isCorrect ? { increment: 1 } : undefined,
+      incorrect_answer: !isCorrect ? { increment: 1 } : undefined,
+    };
+
+    // ユーザー統計を更新
+    await prisma.user.update({
+      where: { user_id },
+      data: updateUserStat,
+    });
+
+    // マッチ内のプレイヤーごとの正解数を更新
+    if (match.player_1_id === user_id) {
+      await prisma.matchDetail.update({
+        where: { match_id },
+        data: {
+          player_1_correct: {
+            increment: isCorrect ? 1 : 0,
+          },
+        },
+      });
+    } else if (match.player_2_id === user_id) {
+      await prisma.matchDetail.update({
+        where: { match_id },
+        data: {
+          player_2_correct: {
+            increment: isCorrect ? 1 : 0,
+          },
+        },
+      });
+    }
+
+    socket.emit("answerSubmitted", { match_id, user_id, isCorrect });
+  } catch (err) {
+    socket.emit("answerError", { error: err.message });
+  }
+});
+
+
+// マッチ終了時
+socket.on("endMatch", async ({ match_id }) => {
+  try {
+    const match = await prisma.matchDetail.findUnique({
+      where: { match_id },
+    });
+
+    if (!match) return socket.emit("matchEndError", { error: "マッチが見つかりません" });
+
+    const { player_1_correct = 0, player_2_correct = 0 } = match;
+
+    let winner = null;
+    let draw = false;
+
+    if (player_1_correct > player_2_correct) {
+      winner = match.player_1_id;
+    } else if (player_2_correct > player_1_correct) {
+      winner = match.player_2_id;
+    } else {
+      draw = true;
+    }
+
+    // マッチの結果更新
+    await prisma.matchDetail.update({
+      where: { match_id },
+      data: {
+        winner: winner,
+        ended_at: new Date(),
+        match_status: 2, 
+      },
+    });
+
+    // ユーザー戦績を更新
+    if (draw) {
+      await prisma.user.updateMany({
+        where: {
+          user_id: { in: [match.player_1_id, match.player_2_id] },
+        },
+        data: {
+          total_draw: { increment: 1 },
+        },
+      });
+    } else {
+      await prisma.user.update({
+        where: { user_id: winner },
+        data: { total_win: { increment: 1 } },
+      });
+
+      const loser = winner === match.player_1_id ? match.player_2_id : match.player_1_id;
+      await prisma.user.update({
+        where: { user_id: loser },
+        data: { total_lose: { increment: 1 } },
+      });
+    }
+
+    io.to(`room_${match_id}`).emit("matchEnded", {
+      winner,
+      draw,
+      player_1_correct,
+      player_2_correct,
+    });
+  } catch (err) {
+    socket.emit("matchEndError", { error: err.message });
+  }
+});
+
+
+// プレイヤーの戦績を管理するAPI
+app.get("/api/user/:user_id/stats", async (req, res) => {
+  const user_id = parseInt(req.params.user_id, 10);
+  try {
+    const user = await prisma.user.findUnique({
+      where: { user_id },
+      select: {
+        user_id: true,
+        user_name: true,
+        total_win: true,
+        total_lose: true,
+        total_draw: true,
+        total_answer: true,
+        correct_answer: true,
+        incorrect_answer: true,
+      },
+    });
+
+    if (!user) return res.status(404).json({ error: "ユーザーが存在しません" });
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // // ルーム作成
 // app.post("/rooms/create", async (req, res) => {
 //   const { player_id } = req.body;
