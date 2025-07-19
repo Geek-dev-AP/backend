@@ -120,6 +120,28 @@ app.get("/rooms/status/:match_id", async (req, res) => {
   }
 });
 
+// ランダムなカード形式の問題取得
+app.get("/api/cards/random", async (req, res) => {
+  try {
+    // 全件取得してランダムに1つ選ぶ
+    const allQuestions = await prisma.question.findMany({
+      select: { question_id: true },
+    });
+
+    if (allQuestions.length === 0) {
+      return res.status(404).json({ error: "質問が存在しません" });
+    }
+
+    const random = allQuestions[Math.floor(Math.random() * allQuestions.length)];
+
+    // 既存の /api/cards/:questionId にリダイレクト
+    res.redirect(`/api/cards/${random.question_id}`);
+  } catch (error) {
+    console.error("ランダムカードの取得に失敗しました", error);
+    res.status(500).json({ error: "内部サーバーエラー" });
+  }
+});
+
 
 // カード形式の問題取得API
 app.get("/api/cards/:questionId", async (req, res) => {
