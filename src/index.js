@@ -120,6 +120,60 @@ app.get("/rooms/status/:match_id", async (req, res) => {
   }
 });
 
+
+// カード形式の問題取得API
+app.get("/api/cards/:questionId", async (req, res) => {
+  const questionId = parseInt(req.params.questionId, 10);
+  if (isNaN(questionId)) {
+    return res.status(400).json({ error: "質問の番号がおかしいです" });
+  }
+
+  try {
+    const question = await prisma.question.findUnique({
+      where: { question_id: questionId },
+      include: {
+        answer: { select: { option_id: true, option_text: true } },
+        field: { select: { field_id: true, field_text: true } },
+      },
+    });
+
+    if (!question) {
+      return res.status(404).json({ error: "質問が見つかりません" });
+    }
+
+    const otherQuestions = await prisma.question.findMany({
+      where: {
+        field_id: question.field_id,
+        question_id: { not: questionId },
+      },
+      include: {
+        answer: { select: { option_id: true, option_text: true } },
+      },
+    });
+
+    // ランダムに3つ選ぶ
+    const shuffled = otherQuestions
+      .sort(() => 0.5 - Math.random())
+      .slice(0, 3)
+      .map(q => q.answer);
+
+    res.status(200).json({
+      question_id: question.question_id,
+      question_text: question.question_text,
+      field: {
+        field_id: question.field.field_id,
+        field_text: question.field.field_text,
+      },
+      correct_answer: question.answer,
+      other_correct_answers: shuffled,
+    });
+  } catch (error) {
+    console.error("カードの取得に失敗しました", error);
+    res.status(500).json({ error: "内部サーバーエラー" });
+  }
+});
+
+
 // サーバー起動
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
