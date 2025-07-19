@@ -74,7 +74,7 @@ model Question {
 }
 
 model User {
-  user_id           Int            @id @map("user_id")
+  user_id           Int            @id @default(autoincrement()) @map("user_id")
   user_name         String         @map("user_name")
   account_name      String         @map("account_name")
   password          String         @map("password")

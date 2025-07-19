@@ -17,6 +17,9 @@ const io = require("socket.io")(server, {
 app.use(cors());
 app.use(express.json());
 
+const userRoutes = require("./routes/userRoutes.js");
+app.use("/api/user", userRoutes);
+
 const matchStates = {};
 
 
@@ -143,15 +146,14 @@ io.on("connection", (socket) => {
       socket.emit("cardError", { error: err.message });
     }
   });
-});
 
-socket.on("sendQuestion", ({ match_id, question }) => {
+
+  socket.on("sendQuestion", ({ match_id, question }) => {
   // ルーム全体（自分＋相手）に1問だけ送信
   io.to(`room_${match_id}`).emit("questionReceived", question);
 });
 
-
-// 回答結果
+  // 回答結果
 socket.on("submitAnswer", async ({ match_id, user_id, isCorrect }) => {
   try {
     // 該当マッチの情報取得
@@ -197,8 +199,7 @@ socket.on("submitAnswer", async ({ match_id, user_id, isCorrect }) => {
   }
 });
 
-
-// マッチ終了時
+  // マッチ終了時
 socket.on("endMatch", async ({ match_id }) => {
   try {
     const match = await prisma.matchDetail.findUnique({
@@ -264,6 +265,7 @@ socket.on("endMatch", async ({ match_id }) => {
   }
 });
 
+});
 
 // プレイヤーの戦績を管理するAPI
 app.get("/api/user/:user_id/stats", async (req, res) => {
